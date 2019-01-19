@@ -104,29 +104,15 @@ void featureLoc(int w, int s, float o, cv::Mat3b const& img, std::vector<cv::Poi
 			Mato detH = Dxx.mul(Dyy) - Dxy.mul(Dxy);
 			cv::Mat1b Edge_response = (traceH.mul(traceH) / (detH+1e-7)) < THRES_EDGE;
 
+			Mato Lx, Ly, Lmag, Ltheta;
+			diff_x(gaussians[j], Lx);
+			diff_y(gaussians[j], Ly);
+			cv::magnitude(Lx, Ly, Lmag);
+			cv::phase(Lx, Ly, Ltheta, true);// measured in degree
+
 			std::vector<cv::Point> keypoints;
 			cv::findNonZero(keymap, keypoints);
 			for(auto& p : keypoints){
-				// int x = p.x, y = p.y;
-				// cv::Mat_<float> sec_derivative = (cv::Mat_<float>(3,3) << \
-				// 	Dxx[y][x], Dxy[y][x], Dxo[y][x], \
-				// 	Dxy[y][x], Dyy[y][x], Dyo[y][x], \
-				// 	Dxo[y][x], Dyo[y][x], Doo[y][x]);
-				// cv::Mat_<float> first_derivative = (cv::Mat_<float>(3,1) << Dx[y][x], Dy[y][x], Do[y][x]);
-				// // cv::Mat_<float> x_hat = sec_derivative.inv(cv::DECOMP_SVD) * -first_derivative;
-				// cv::Mat_<float> x_hat;
-				// cv::solve(sec_derivative, -first_derivative, x_hat, cv::DECOMP_SVD);
-				
-				// if(std::abs(DoG[j][y][x] + 0.5*first_derivative.dot(x_hat)) >= THRES_CONTRAST * 255. \
-				// 	&& detH[y][x] > 0 && Edge_response[y][x]){
-
-				// 	cv::Point X_plum(std::round((x + x_hat[0][0]) * scale), std::round((y + x_hat[1][0]) * scale));
-				// 	if(X_plum.inside(ROI)){
-				// 		if (response_map(X_plum)) continue;
-				// 		response_map(X_plum) = 255;
-				// 		outLoc.push_back(X_plum);
-				// 	}
-				// }
 				cv::Mat_<float> sec_derivative = (cv::Mat_<float>(3,3) << \
 					Dxx(p), Dxy(p), Dxo(p), \
 					Dxy(p), Dyy(p), Dyo(p), \
@@ -146,12 +132,6 @@ void featureLoc(int w, int s, float o, cv::Mat3b const& img, std::vector<cv::Poi
 						outLoc.push_back(cv::Point3i((p.x + x_hat[0][0]) * scale, (p.y + x_hat[1][0]) * scale, j - 1));
 					}
 				}
-				// cv::Point X_plum = p * scale;
-				// 	if(X_plum.inside(ROI)){
-				// 		if (response_map(X_plum)) continue;
-				// 		response_map(X_plum) = 255;
-				// 		outLoc.push_back(X_plum);
-				// 	}
 			}
 		}
 
@@ -166,7 +146,6 @@ void featureLoc(int w, int s, float o, cv::Mat3b const& img, std::vector<cv::Poi
 	// cv::imshow("Display Image", response_map);
 	// cv::waitKey(0);	
 }
-
 
 int main(int argc, char** argv){
 	auto start = std::chrono::system_clock::now();
@@ -189,7 +168,6 @@ int main(int argc, char** argv){
 
     for(auto& p : feature_loc){
     	cv::Scalar out[] = {cv::Scalar(255, 0, 0), cv::Scalar(0, 255, 0), cv::Scalar(0, 0, 255)};
-		// cv::circle(image, cv::Point(p.x, p.y), 2.5, out[p.z], -1);
 		cv::circle(image, cv::Point(p.x, p.y), 2.5, out[2], -1);
 	}
 	cv::namedWindow("Display Image", cv::WINDOW_AUTOSIZE );
