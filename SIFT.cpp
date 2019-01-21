@@ -72,12 +72,6 @@ void diff2_y(Mato const& in, Mato& out){
 	out = down - 2*in + up;
 }
 
-void bin(Mato const& in, Mato& out, double factor){
-	cv::Mat tmp;
-	in.convertTo(tmp, CV_32S, 1./factor, 0);
-	tmp.convertTo(out, out.type(), factor, 0);
-}
-
 using feature = cv::Point3i;
 void keyPoint(/*Mato const& gaussian, */
 	Mato const& mag, 
@@ -90,7 +84,7 @@ void keyPoint(/*Mato const& gaussian, */
 	cv::Rect ROI(0, 0, mag.cols, mag.rows);
 	std::vector<float> hist(36, 0);
 	int maxr = 0;
-	int ksize = 8;
+	int ksize = 4;
 	int up, down, left, right;
 	if(!at.inside(ROI)) return;
 	// std::cerr << at.x  << " " << at.y << " " << mag.rows << " " << mag.cols << std::endl;
@@ -101,7 +95,7 @@ void keyPoint(/*Mato const& gaussian, */
 
 	// cv::Mat G = cv::getGaussianKernel(2*ksize+1, 1.5 * scale, phase.type() );	
 	Mato G = Mato::zeros(2*ksize+1, 2*ksize+1);
-	G[ksize][ksize] = 1;
+	G[ksize][ksize] = 255;
 	cv::GaussianBlur(G, G, cv::Size(), 1.5*scale, 1.5*scale, cv::BORDER_DEFAULT);
 
 
@@ -116,19 +110,27 @@ void keyPoint(/*Mato const& gaussian, */
 
 	for(int dx = 0; dx < 2*ksize+1; dx++){
 		for(int dy = 0; dy < 2*ksize+1; dy++){
-			int binval = phase[at.y - up + dy][at.x - left + dx] / 10;
-			// std::cerr << binval << std::endl;
-			assert(binval >= 0 && binval <= 36);
-			hist[binval] += Weight[dy][dx];
-			if(hist[binval] > hist[maxr]){
-				maxr = binval;
+			if(Weight[dy][dx]>0){
+				int binval = (int)(phase[at.y - up + dy][at.x - left + dx] / 10)%36;
+				// std::cerr << binval << std::endl;
+				hist[binval] += Weight[dy][dx];
+				if(hist[binval] > hist[maxr]){
+					maxr = binval;
+				}
 			}
 		}
 	}
 
 	for(int i = 0; i < 36; i++){
 		if(hist[i] > hist[maxr] * 0.8){
-			out.push_back(cv::Point3i(at.x * coords_scale, at.y * coords_scale, i*10));
+			float next = i==35 ? 2*hist[35]-hist[34] : hist[i+1];
+			float prev = i==0 ? 2*hist[0]-hist[1] : hist[i-1];
+			float dH = 0.5 * (next - prev);
+			float d2H = next - 2*hist[i] + prev;
+
+			int maximum = d2H ? std::round(i*10 - dH/d2H) : i*10;
+
+ 			out.push_back(cv::Point3i(at.x * coords_scale, at.y * coords_scale, maximum));
 		}
 	}
 }
@@ -153,19 +155,8 @@ void featureLoc(int w, int s, float o, cv::Mat3b const& img, std::vector<feature
 			cv::erode( DoG[j], erotion[j], element );
 		}
 
-		// std::vector<Mato> DoDoG(s+2);
-		// for(int j = 0; j < s+2; j++){
-		// 	if(j==0){
-		// 		DoDoG[j] = (DoG[1] - DoG[0]) / 1;
-		// 	}else if(j==s+1){
-		// 		DoDoG[j] = (DoG[s+1] - DoG[s]) / 1;
-		// 	}else
-		// 		DoDoG[j] = (DoG[j+1] - DoG[j-1]) / 2;
-		// }
-
-		// cv::Mat1b local_response = cv::Mat1b::zeros(top.size());
 		for(int j = 1; j < s+1; j++){
-			float scale = o * std::pow(2., j/(float)s + i);
+			float scale = o * std::pow(2., (float)j/s + i);
 
 			cv::Mat1b keymap = ( 
 				  ( (DoG[j] == erotion[j]) & (DoG[j] <= erotion[j-1]) & (DoG[j] <= erotion[j+1]) ) \
@@ -188,14 +179,19 @@ void featureLoc(int w, int s, float o, cv::Mat3b const& img, std::vector<feature
 			Mato detH = Dxx.mul(Dyy) - Dxy.mul(Dxy);
 			cv::Mat1b non_Edge_response = (traceH.mul(traceH) / (detH)) < THRES_EDGE;
 
+
 			Mato Lx, Ly, Lmag, Ltheta;
 			diff_x(gaussians[j], Lx);
 			diff_y(gaussians[j], Ly);
 			cv::magnitude(Lx, Ly, Lmag);
 			cv::phase(Lx, Ly, Ltheta, true);// measured in degrees, 0~360
-			bin(Ltheta, Ltheta, 10);
+			// cv::imshow("Display Image", Lmag / 255);
+			// cv::waitKey(0);
 
-			// std::cerr << Ltheta << std::endl;
+			// double min, max;
+			// cv::minMaxLoc(Ltheta, &min, &max);
+			// std::cerr << min << " " << max << std::endl;
+
 
 			std::vector<cv::Point> keypoints;
 			cv::findNonZero(keymap, keypoints);
