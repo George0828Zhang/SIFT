@@ -4,15 +4,13 @@
 #include <cassert>
 #include <chrono>// for time evaluation
 #include <cmath>// for pow
+// #include <algorithm>// for fill
+// #include <numeric>// for accumulate
 #include <opencv2/core/core.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/highgui/highgui.hpp>
+#include "SIFT.hpp"
 
-// #define ARMA_DONT_USE_WRAPPER
-// // #define ARMA_NO_DEBUG
-// #include <armadillo>
-
-// using vector = std::vector;
 using Mato = cv::Mat_<float>;
 constexpr float THRES_CONTRAST = 0.03;
 constexpr float THRES_EDGE = 12.1;
@@ -72,14 +70,100 @@ void diff2_y(Mato const& in, Mato& out){
 	out = down - 2*in + up;
 }
 
-using feature = cv::Point3i;
-void keyPoint(/*Mato const& gaussian, */
+using Orientation = cv::Point3i;
+
+
+void O2F(
+	Mato const& mag, 
+	Mato const& phase, 
+	float coords_scale,
+	std::vector<Orientation> const& in_ori,
+	std::vector<feature>& out )
+{
+	cv::Rect ROI(0, 0, mag.cols, mag.rows);
+	for(auto &O : in_ori){
+		feature F;
+
+		F.x = O.x * coords_scale;
+		F.y = O.y * coords_scale;
+		F.theta = O.z;
+
+		int up, down, left, right;
+		int ksize = DESCIPTOR_SZ / 2 * 4;
+		cv::Point at(O.x, O.y);
+		up = std::min(ksize, at.y);
+		down = std::min(ksize, mag.rows - 1 - at.y);
+		left = std::min(ksize, at.x);
+		right = std::min(ksize, mag.cols - 1 - at.x);
+
+		// Mato G = Mato::zeros(2*ksize+1, 2*ksize+1);
+		Mato G = Mato::zeros(2*ksize, 2*ksize);
+		G[ksize][ksize] = 255.0;
+		cv::GaussianBlur(G, G, cv::Size(), ksize, ksize, cv::BORDER_DEFAULT);
+
+
+		// Mato Weight = Mato::zeros(2*ksize+1, 2*ksize+1);
+		Mato Weight = Mato::zeros(2*ksize, 2*ksize);
+
+		// mag(cv::Rect(at.x - left, at.y - up, left + right + 1, up + down + 1)).copyTo(\
+		// 	Weight(cv::Rect(ksize - left, ksize - up, left + right + 1, up + down + 1)));
+		
+		mag(cv::Rect(at.x - left, at.y - up, left + right , up + down )).copyTo(\
+			Weight(cv::Rect(ksize - left, ksize - up, left + right , up + down )));
+		
+		Weight = Weight.mul(G);
+		
+
+		// for(int dx = 0; dx < 2*ksize+1; dx++){
+		// 	for(int dy = 0; dy < 2*ksize+1; dy++){
+		// 		if(Weight[dy][dx]>0){
+		// 			int binval = (int)(phase[at.y - up + dy][at.x - left + dx] / 45)%8;
+		// 			// std::cerr << binval << std::endl;
+		// 			hist[binval] += Weight[dy][dx];
+		// 		}
+		// 	}
+		// }
+		for(int dx = 0; dx < 2*ksize; dx++){
+			for(int dy = 0; dy < 2*ksize; dy++){
+				if(Weight[dy][dx]>0){
+					int binval = (int)((phase[at.y - up + dy][at.x - left + dx] -  O.z) / 45)%8;
+					// if(dx < ksize){
+					// 	if(dy < ksize){
+					// 		F._descriptor[0 + binval] += Weight[dy][dx];
+					// 	}else{
+					// 		F._descriptor[16 + binval] += Weight[dy][dx];
+					// 	}
+					// }else{
+					// 	if(dy < ksize){
+					// 		F._descriptor[8 + binval] += Weight[dy][dx];
+					// 	}else{
+					// 		F._descriptor[24 + binval] += Weight[dy][dx];
+					// 	}
+					// }
+					int desc_index = (dx / 4) + (dy / 4) * DESCIPTOR_SZ;
+					F._descriptor[8*desc_index + binval] += Weight[dy][dx];
+				}
+			}
+		}
+
+
+		// std::cerr << "=====" << std::endl;
+		// std::cerr << feature::match(F, F) << std::endl;
+		// F.normalize();
+		// std::cerr << feature::match(F, F) << std::endl;
+		F.normalize();
+
+		out.push_back(F);
+	}
+}
+
+void orientate(/*Mato const& gaussian, */
 	Mato const& mag, 
 	Mato const& phase, 
 	cv::Point const& at, 
 	float scale, 
 	float coords_scale,
-	std::vector<feature>& out)
+	std::vector<Orientation>& out)
 {	
 	cv::Rect ROI(0, 0, mag.cols, mag.rows);
 	std::vector<float> hist(36, 0);
@@ -130,7 +214,8 @@ void keyPoint(/*Mato const& gaussian, */
 
 			int maximum = d2H ? std::round(i*10 - dH/d2H) : i*10;
 
- 			out.push_back(cv::Point3i(at.x * coords_scale, at.y * coords_scale, maximum));
+ 			// out.push_back(cv::Point3i(at.x * coords_scale, at.y * coords_scale, maximum));
+ 			out.push_back(cv::Point3i(at.x, at.y, maximum));
 		}
 	}
 }
@@ -195,6 +280,9 @@ void featureLoc(int w, int s, float o, cv::Mat3b const& img, std::vector<feature
 
 			std::vector<cv::Point> keypoints;
 			cv::findNonZero(keymap, keypoints);
+
+			std::vector<Orientation> okeypoints;
+
 			for(auto& p : keypoints){
 				cv::Mat_<float> sec_derivative = (cv::Mat_<float>(3,3) << \
 					Dxx(p), Dxy(p), Dxo(p), \
@@ -213,7 +301,7 @@ void featureLoc(int w, int s, float o, cv::Mat3b const& img, std::vector<feature
 					&& detH(p) > 0 && non_Edge_response(p)){
 
 					cv::Point X_plum(p.x + x_hat[0][0], p.y + x_hat[1][0]);
-					keyPoint(Lmag, Ltheta, X_plum, scale, coords_scale, outLoc);
+					orientate(Lmag, Ltheta, X_plum, scale, coords_scale, okeypoints);
 
 					// cv::Point X_plum((p.x + x_hat[0][0]) * coords_scale, (p.y + x_hat[1][0]) * coords_scale);
 					// if(X_plum.inside(ROI)){
@@ -224,6 +312,9 @@ void featureLoc(int w, int s, float o, cv::Mat3b const& img, std::vector<feature
 					// }
 				}
 			}
+
+			// TODO: orientaion to descriptor
+			O2F(Lmag, Ltheta, coords_scale, okeypoints, outLoc);
 		}
 
 		// response_map |= local_response;
@@ -236,46 +327,4 @@ void featureLoc(int w, int s, float o, cv::Mat3b const& img, std::vector<feature
 	// cv::namedWindow("Display Image", cv::WINDOW_AUTOSIZE );
 	// cv::imshow("Display Image", response_map);
 	// cv::waitKey(0);	
-}
-
-cv::Point dir(float theta, float r){
-	float x = r*std::cos(theta/180. * M_PI);
-	float y = r*std::sin(theta/180. * M_PI);
-	return cv::Point(x, y);
-}
-
-int main(int argc, char** argv){
-	auto start = std::chrono::system_clock::now();
-	cv::Mat3b image;
-	image = cv::imread( argv[1], cv::IMREAD_COLOR );
-	if ( !image.data )
-	{
-		printf("No image data \n");
-		return -1;
-	}
-
-	// TODO: upsample once
-	cv::Mat3b big_image;
-	cv::resize(image, big_image, cv::Size(), 2.0, 2.0, cv::INTER_LINEAR);
-	// cv::pyrUp(image, big_image);
-	std::vector<feature> sift_features;
-	featureLoc(4, 3, 1.6, big_image, sift_features);
-
-	
-
-	auto end = std::chrono::system_clock::now(); 
-    std::chrono::duration<double> elapsed_seconds = end-start; 
-    std::cerr << "[Info] Elapsed time: " << elapsed_seconds.count() << "s\n";
-    std::cerr << "[Info] Found feautures: " << sift_features.size() << "\n";
-
-    for(auto& p : sift_features){
-    	cv::Scalar out[] = {cv::Scalar(255, 0, 0), cv::Scalar(0, 255, 0), cv::Scalar(0, 0, 255)};
-		// cv::circle(image, cv::Point(p.x, p.y), 3, out[0], -1);
-		float r = 20.;
-		cv::Point from(p.x / 2, p.y / 2);
-		cv::arrowedLine(image, from, from + dir(p.z, r), out[1], 2, 8, 0, 0.2);
-	}
-	cv::namedWindow("Display Image", cv::WINDOW_AUTOSIZE );
-	cv::imshow("Display Image", image);
-	cv::waitKey(0);	
 }
