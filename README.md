@@ -21,7 +21,7 @@ make
 ```
 
 ### Sample Result
-![](https://i.imgur.com/PatXdOi.png)
+![](https://i.imgur.com/qXJ6ord.png)
 
 ### Implementation Details
 This implementation stays mostly true to that of Lowe's. The following is a summary of the procedure, for details please refer to the paper. (see references)
