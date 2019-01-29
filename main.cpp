@@ -35,6 +35,8 @@ int match(std::vector<feature> const& base, feature const& data){
 }
 
 int main(int argc, char** argv){
+	int LAYERS = 4;
+
 	auto start = std::chrono::system_clock::now();
 	cv::Mat3b image1, image2;
 	image1 = cv::imread( argv[1], cv::IMREAD_COLOR );
@@ -47,7 +49,7 @@ int main(int argc, char** argv){
 	cv::Mat3b big_image;
 	cv::resize(image1, big_image, cv::Size(), 2.0, 2.0, cv::INTER_LINEAR);
 	std::vector<feature> sift_descriptors1;
-	featureLoc(4, 3, 1.6, big_image, sift_descriptors1);
+	featureLoc(LAYERS, 3, 1.6, big_image, sift_descriptors1);
 	
 
 	auto end = std::chrono::system_clock::now(); 
@@ -60,8 +62,11 @@ int main(int argc, char** argv){
 		cv::circle(image1, cv::Point(p.x / 2, p.y / 2), 3, out[0], -1);
 		// float r = 20.;
 		// cv::Point from(p.x / 2, p.y / 2);
-		// cv::arrowedLine(image, from, from + dir(p.theta, r), out[1], 2, 8, 0, 0.2);
+		// cv::arrowedLine(image1, from, from + dir(p.theta, r), out[1], 2, 8, 0, 0.2);
 	}
+
+	// cv::imshow("Display Image", image1);
+	// cv::waitKey(0);	
 
 
 	image2 = cv::imread( argv[2], cv::IMREAD_COLOR );
@@ -73,13 +78,14 @@ int main(int argc, char** argv){
 
 	cv::resize(image2, big_image, cv::Size(), 2.0, 2.0, cv::INTER_LINEAR);
 	std::vector<feature> sift_descriptors2;
-	featureLoc(4, 3, 1.6, big_image, sift_descriptors2);
+	featureLoc(LAYERS, 3, 1.6, big_image, sift_descriptors2);
 	
 
 	cv::Mat3b matcher = cv::Mat3b::zeros(std::max(image2.rows, image1.rows), image1.cols+image2.cols);
 	image1.copyTo(matcher(cv::Rect(0, 0, image1.cols, image1.rows)));
 	image2.copyTo(matcher(cv::Rect(image1.cols, 0, image2.cols, image2.rows)));
 
+	std::cerr << "Size: " << image2.size() << std::endl;
     for(auto& p : sift_descriptors2){
     	cv::Scalar out[] = {cv::Scalar(255, 0, 0), cv::Scalar(0, 255, 0), cv::Scalar(0, 0, 255)};
 		cv::circle(matcher, cv::Point(image1.cols+p.x / 2, p.y / 2), 3, out[0], -1);
@@ -91,12 +97,11 @@ int main(int argc, char** argv){
 
 			cv::line(matcher, from, to, out[0], 1, 8, 0);
 		}
+		// cv::imshow("Display Image", matcher);
+		// cv::waitKey(0);	
 	}
 
 
-
-
-	cv::namedWindow("Display Image", cv::WINDOW_AUTOSIZE );
 	cv::imshow("Display Image", matcher);
 	cv::waitKey(0);	
 }

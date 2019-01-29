@@ -123,23 +123,14 @@ void O2F(
 		// 		}
 		// 	}
 		// }
+	
 		for(int dx = 0; dx < 2*ksize; dx++){
 			for(int dy = 0; dy < 2*ksize; dy++){
 				if(Weight[dy][dx]>0){
-					int binval = (int)((phase[at.y - up + dy][at.x - left + dx] -  O.z) / 45)%8;
-					// if(dx < ksize){
-					// 	if(dy < ksize){
-					// 		F._descriptor[0 + binval] += Weight[dy][dx];
-					// 	}else{
-					// 		F._descriptor[16 + binval] += Weight[dy][dx];
-					// 	}
-					// }else{
-					// 	if(dy < ksize){
-					// 		F._descriptor[8 + binval] += Weight[dy][dx];
-					// 	}else{
-					// 		F._descriptor[24 + binval] += Weight[dy][dx];
-					// 	}
-					// }
+					// int binval = (int)((phase[at.y - up + dy][at.x - left + dx] -  O.z) / 45)%8;
+
+					int binval = ((int)(phase[at.y - up + dy][at.x - left + dx] - O.z + 360) % 360) / 45;
+
 					int desc_index = (dx / 4) + (dy / 4) * DESCIPTOR_SZ;
 					F._descriptor[8*desc_index + binval] += Weight[dy][dx];
 				}
@@ -151,8 +142,12 @@ void O2F(
 		// std::cerr << feature::match(F, F) << std::endl;
 		// F.normalize();
 		// std::cerr << feature::match(F, F) << std::endl;
+
 		F.normalize();
 
+		if(F.y > 10000){
+			std::cerr << "[debug] " << O.x << " " << O.y << " " << coords_scale << std::endl;
+		}
 		out.push_back(F);
 	}
 }
@@ -168,7 +163,7 @@ void orientate(/*Mato const& gaussian, */
 	cv::Rect ROI(0, 0, mag.cols, mag.rows);
 	std::vector<float> hist(36, 0);
 	int maxr = 0;
-	int ksize = 4;
+	int ksize = 3;
 	int up, down, left, right;
 	if(!at.inside(ROI)) return;
 	// std::cerr << at.x  << " " << at.y << " " << mag.rows << " " << mag.cols << std::endl;
@@ -179,7 +174,7 @@ void orientate(/*Mato const& gaussian, */
 
 	// cv::Mat G = cv::getGaussianKernel(2*ksize+1, 1.5 * scale, phase.type() );	
 	Mato G = Mato::zeros(2*ksize+1, 2*ksize+1);
-	G[ksize][ksize] = 255;
+	G[ksize][ksize] = 255.;
 	cv::GaussianBlur(G, G, cv::Size(), 1.5*scale, 1.5*scale, cv::BORDER_DEFAULT);
 
 
@@ -228,11 +223,13 @@ void featureLoc(int w, int s, float o, cv::Mat3b const& img, std::vector<feature
 	auto element = cv::getStructuringElement( cv::MORPH_RECT, cv::Size(3, 3) );
 
 	for(int i = 0; i < w; i++){
-		float coords_scale = 1<<i;
+		// float coords_scale = 1<<i;
+		float coords_scale = (float)ROI.width / top.cols;
 
 		std::vector<Mato> gaussians;
 		std::vector<Mato> DoG;
 		octave(s, o, top, gaussians, DoG);
+
 
 		std::vector<Mato> erotion(s+2), dilation(s+2);
 		for(int j = 0; j < s+2; j++){

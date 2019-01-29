@@ -19,7 +19,7 @@ public:
 	std::array<float, DESCIPTOR_SZ* DESCIPTOR_SZ*8> _descriptor;
 	feature()
 	{
-		std::fill(_descriptor.begin(), _descriptor.end(), 0);
+		std::fill(_descriptor.begin(), _descriptor.end() - 1, 0);
 	}
 	void normalize(){
 		// auto summ = std::sqrt(std::inner_product(_descriptor.begin(), _descriptor.end(), _descriptor.begin(), 0.));
